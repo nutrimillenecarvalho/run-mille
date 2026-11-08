@@ -528,9 +528,14 @@ function startTimer(kind){
   if(!ph.length)return;
   T={ph,kind,i:0,end:Date.now()+ph[0].s*1000,paused:0,iv:null,wl:null};
   try{navigator.wakeLock&&navigator.wakeLock.request("screen").then(w=>T&&(T.wl=w)).catch(()=>{})}catch(e){}
-  beep(1);T.iv=setInterval(tick,250);paintTimer();
+  beep(1);T.iv=setInterval(tick,250);saveT();paintTimer();
 }
-function tick(){if(!T||T.paused)return;if(Date.now()>=T.end){T.i++;if(T.i>=T.ph.length){beep(3);stopTimer(true);return}beep(T.ph[T.i].k==="r"?2:1);T.end=Date.now()+T.ph[T.i].s*1000}paintTimer()}
+function tick(){if(!T||T.paused)return;const now=Date.now();if(now>=T.end){let n=0;while(now>=T.end){T.i++;n++;if(T.i>=T.ph.length){beep(3);stopTimer(true);return}T.end+=T.ph[T.i].s*1000}beep(T.ph[T.i].k==="r"?2:1);saveT()}paintTimer()}
+const TK="runmille-timer";
+function saveT(){try{if(T)localStorage.setItem(TK,JSON.stringify({ph:T.ph,kind:T.kind,i:T.i,end:T.end,paused:T.paused}));else localStorage.removeItem(TK)}catch(e){}}
+function lockScreen(){try{if(T&&navigator.wakeLock&&document.visibilityState==="visible")navigator.wakeLock.request("screen").then(w=>T&&(T.wl=w)).catch(()=>{})}catch(e){}}
+function resumeT(){try{const r=JSON.parse(localStorage.getItem(TK)||"null");if(!r||!r.ph||!r.ph.length)return;T={ph:r.ph,kind:r.kind,i:r.i,end:r.end,paused:r.paused||0,iv:null,wl:null};T.iv=setInterval(tick,250);lockScreen();tick();if(T)paintTimer()}catch(e){}}
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&T){tick();lockScreen()}});
 function paintTimer(){
   if(!T)return;const p=T.ph[T.i],rem=Math.max(0,Math.ceil(((T.paused?T.paused:Date.now())-T.end)/-1000)),nx=T.ph[T.i+1];
   const pct=Math.round((1-rem/p.s)*100);
@@ -540,7 +545,7 @@ function paintTimer(){
   <div class="tbar"><i style="width:${pct}%"></i></div>
   <div class="ctrl"><button data-act="t-stop">Encerrar</button><button class="main" data-act="t-pause"><span>${T.paused?"Continuar":"Pausar"}</span></button><button data-act="t-skip">Pular</button></div></div>`;
 }
-function stopTimer(finished){if(!T)return;const k=T.kind;clearInterval(T.iv);try{T.wl&&T.wl.release()}catch(e){}T=null;$("#layer").innerHTML="";if(finished)toast(k==="warm"?"Aquecimento feito! Agora o treino principal.":k==="main"?"Blocos concluídos! Agora o pós-treino.":"Pós-treino feito! Registre e conclua o treino.")}
+function stopTimer(finished){if(!T)return;const k=T.kind;clearInterval(T.iv);try{T.wl&&T.wl.release()}catch(e){}T=null;saveT();$("#layer").innerHTML="";if(finished)toast(k==="warm"?"Aquecimento feito! Agora o treino principal.":k==="main"?"Blocos concluídos! Agora o pós-treino.":"Pós-treino feito! Registre e conclua o treino.")}
 
 /* ---------- SEMANAS / RELATÓRIOS ---------- */
 function minutesOf(t){if(!t)return 0;const s=String(t);if(s.includes(":"))return toSec(s)/60;const m=parseFloat(s.replace(",","."));return isNaN(m)?0:m}
@@ -801,7 +806,7 @@ document.addEventListener("click",async ev=>{
   if(a==="rm-photo"){if(await confirmBox("Remover esta foto do treino?","Remover",true)){const l=ensureLog(c,r.key),p=l.photos.splice(+b.dataset.i,1)[0];if(p&&p.lid)idbDel(p.lid);save();render()}return}
   if(a==="timer"){startTimer(b.dataset.k||"main");return}
   if(a==="pdf-sample"){sampleWeekPDF();return}
-  if(a==="t-pause"){if(T.paused){T.end+=Date.now()-T.paused;T.paused=0}else T.paused=Date.now();paintTimer();return}
+  if(a==="t-pause"){if(T.paused){T.end+=Date.now()-T.paused;T.paused=0}else T.paused=Date.now();saveT();paintTimer();return}
   if(a==="t-skip"){T.end=Date.now();tick();return}
   if(a==="t-stop"){stopTimer(false);return}
   if(a==="pdf"){savePDF(+b.dataset.w);return}
@@ -836,6 +841,7 @@ document.addEventListener("change",async ev=>{
 
 render();
 initCaps();
+resumeT();
 })();
 </script>
 
